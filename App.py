@@ -131,7 +131,7 @@ def go(code):
 
 @app.errorhandler(redis.RedisError)
 def handle_redis_error(exc):
-    app.logger.error("Redis error: %s", exc)
+    app.logger.error("Redis error: %s", exc, exc_info=exc)
     return jsonify({"error": "service temporarily unavailable"}), 503
 
 
