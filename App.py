@@ -56,7 +56,7 @@ def shorten():
 
     alias = data.get("alias")
     if alias:
-        if not ALIAS_PATTERN.match(alias):
+        if not isinstance(alias, str) or not ALIAS_PATTERN.fullmatch(alias):
             return jsonify({"error": "invalid alias"}), 400
         if not claim_code(alias, url):
             return jsonify({"error": "alias already taken"}), 409
