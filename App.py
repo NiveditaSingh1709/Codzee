@@ -32,6 +32,8 @@ def link_key(code):
 ALIAS_PATTERN = re.compile(r"^[A-Za-z0-9_-]{3,30}$")
 
 def is_valid_url(value):
+    if not isinstance(value, str):
+        return False
     parsed = urlparse(value)
     return parsed.scheme in ("http", "https") and bool(parsed.netloc)
 
