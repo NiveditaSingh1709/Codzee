@@ -1,5 +1,7 @@
 import os
+import re
 import string
+from urllib.parse import urlparse
 
 import redis
 from flask import Flask, jsonify, request, redirect
@@ -27,15 +29,51 @@ def encode_base62(n):
 def link_key(code):
     return f"url:{code}"
 
+ALIAS_PATTERN = re.compile(r"^[A-Za-z0-9_-]{3,30}$")
+
+def is_valid_url(value):
+    try:
+        parsed = urlparse(value)
+    except ValueError:
+        return False
+    return parsed.scheme in ("http", "https") and bool(parsed.netloc)
+
+def claim_code(code, url):
+    """Atomically claim a code; returns False if already taken."""
+    return bool(r.hsetnx(link_key(code), "url", url))
+
 @app.route("/shorten", methods=["POST"])
 def shorten():
-    data = request.get_json()
-    code = encode_base62(r.incr(COUNTER_KEY))
-    r.hset(link_key(code), mapping={"url": data["url"], "clicks": 0})
-    expires_in = data.get("expires_in")  # seconds, optional
+    data = request.get_json(silent=True) or {}
+    url = data.get("url", "")
+    if not is_valid_url(url):
+        return jsonify({"error": "a valid http(s) url is required"}), 400
+
+    expires_in = data.get("expires_in")
+    if expires_in is not None and (
+        not isinstance(expires_in, int) or isinstance(expires_in, bool) or expires_in <= 0
+    ):
+        return jsonify({"error": "expires_in must be a positive integer"}), 400
+
+    alias = data.get("alias")
+    if alias:
+        if not isinstance(alias, str) or not ALIAS_PATTERN.fullmatch(alias):
+            return jsonify({"error": "invalid alias"}), 400
+        if not claim_code(alias, url):
+            return jsonify({"error": "alias already taken"}), 409
+        code = alias
+    else:
+        # A custom alias could equal a future counter value, so verify the claim
+        while True:
+            code = encode_base62(r.incr(COUNTER_KEY))
+            if claim_code(code, url):
+                break
+
+    r.hset(link_key(code), "clicks", 0)
     if expires_in:
         r.expire(link_key(code), expires_in)
     return jsonify({"short_code": code, "short_url": request.host_url + code}), 201
+
 
 
 @app.route("/stats/<code>")
