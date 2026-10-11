@@ -15,6 +15,7 @@ r = redis.Redis.from_url(
 BASE62 = string.digits + string.ascii_letters
 COUNTER_KEY = "meta:url_counter"
 MAX_EXPIRY_SECONDS = 60 * 60 * 24 * 365  # one year
+MAX_URL_LENGTH = 2048
 ALIAS_PATTERN = re.compile(r"^[A-Za-z0-9_-]{3,30}$")
 
 # Atomically create a link with its click counter and optional TTL.
@@ -56,7 +57,7 @@ def link_key(code):
 
 
 def is_valid_url(value):
-    if not isinstance(value, str):
+    if not isinstance(value, str) or len(value) > MAX_URL_LENGTH:
         return False
     try:
         parsed = urlparse(value)
@@ -128,6 +129,11 @@ def go(code):
         return jsonify({"error": "not found"}), 404
     return redirect(url)
 
+@app.errorhandler(redis.RedisError)
+def handle_redis_error(exc):
+    app.logger.error("Redis error: %s", exc, exc_info=exc)
+    return jsonify({"error": "service temporarily unavailable"}), 503
+
 
 if __name__ == "__main__":
-    app.run(debug=True)
+    app.run(debug=os.environ.get("FLASK_DEBUG") == "1")
