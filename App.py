@@ -27,13 +27,28 @@ def encode_base62(n):
 def link_key(code):
     return f"url:{code}"
 
-
 @app.route("/shorten", methods=["POST"])
 def shorten():
     data = request.get_json()
     code = encode_base62(r.incr(COUNTER_KEY))
     r.hset(link_key(code), mapping={"url": data["url"], "clicks": 0})
+    expires_in = data.get("expires_in")  # seconds, optional
+    if expires_in:
+        r.expire(link_key(code), expires_in)
     return jsonify({"short_code": code, "short_url": request.host_url + code}), 201
+
+
+@app.route("/stats/<code>")
+def stats(code):
+    entry = r.hgetall(link_key(code))
+    if not entry:
+        return jsonify({"error": "not found"}), 404
+    ttl = r.ttl(link_key(code))
+    return jsonify({
+        "url": entry["url"],
+        "clicks": int(entry["clicks"]),
+        "expires_in": ttl if ttl >= 0 else None,
+    })
 
 
 @app.route("/<code>")
